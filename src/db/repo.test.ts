@@ -51,7 +51,7 @@ describe('runCatchUp', () => {
     await createTask(db, { title: 'Read', recurrence: { type: 'daily' } }, '2026-10-01')
     await runCatchUp(db, '2026-10-01')
     const result = await runCatchUp(db, '2026-10-05')
-    expect(result).toEqual({ created: 4, expired: 4 }) // Oct 1 plus Oct 2–4 expire; Oct 2–5 are created
+    expect(result).toMatchObject({ created: 4, expired: 4 }) // Oct 1 plus Oct 2–4 expire; Oct 2–5 are created
     const rows = await dates()
     expect(rows.filter((r) => r.endsWith('expired'))).toHaveLength(4)
     expect(rows.at(-1)).toBe('2026-10-05:Read:pending')
@@ -62,7 +62,7 @@ describe('runCatchUp', () => {
     await db.occurrences.update('' + (await db.occurrences.toCollection().first())!.id, { status: 'done' })
     await runCatchUp(db, '2026-10-03')
     const first = await dates()
-    expect(await runCatchUp(db, '2026-10-03')).toEqual({ created: 0, expired: 0 })
+    expect(await runCatchUp(db, '2026-10-03')).toMatchObject({ created: 0, expired: 0, finalized: 0 })
     expect(await dates()).toEqual(first)
     expect(first[0]).toBe('2026-10-01:Read:done')
   })
@@ -158,6 +158,124 @@ describe('completeOccurrence', () => {
     await completeOccurrence(db, id, photo(), '2026-10-04')
     await runCatchUp(db, '2026-10-06')
     expect((await db.occurrences.get(id))?.status).toBe('done')
-    expect(await db.ledger.count()).toBe(1)
+    expect(await db.ledger.where('kind').equals('task_complete').count()).toBe(1)
+  })
+})
+
+
+describe('day finalization', () => {
+  const photo = () => ({ blob: new Blob(['x'], { type: 'image/jpeg' }), mime: 'image/jpeg' })
+  const dayRows = async () => (await db.days.orderBy('date').toArray()).map((d) => `${d.date}:${d.outcome}`)
+  const dayXp = async () =>
+    (await db.ledger.where('kind').anyOf('day_perfect', 'day_streak', 'day_broken', 'day_rest').sortBy('date')).map(
+      (e) => `${e.date}:${e.delta}`,
+    )
+
+  it('scores a fully completed day as perfect once the day is over, and never scores today', async () => {
+    const t = await createTask(db, { title: 'Read', recurrence: { type: 'daily' } }, '2026-10-01')
+    await completeOccurrence(db, `${t.id}_2026-10-01`, photo(), '2026-10-01')
+
+    expect(await runCatchUp(db, '2026-10-01')).toMatchObject({ finalized: 0 })
+    expect(await dayRows()).toEqual([])
+
+    expect(await runCatchUp(db, '2026-10-02')).toMatchObject({ finalized: 1 })
+    expect(await dayRows()).toEqual(['2026-10-01:perfect'])
+    expect(await dayXp()).toEqual(['2026-10-01:100'])
+  })
+
+  it('scores a day with some tasks done as a streak day (+50)', async () => {
+    const a = await createTask(db, { title: 'A', recurrence: { type: 'daily' } }, '2026-10-01')
+    await createTask(db, { title: 'B', recurrence: { type: 'daily' } }, '2026-10-01')
+    await completeOccurrence(db, `${a.id}_2026-10-01`, photo(), '2026-10-01')
+    await runCatchUp(db, '2026-10-02')
+    expect(await dayRows()).toEqual(['2026-10-01:streak'])
+    expect(await dayXp()).toEqual(['2026-10-01:50'])
+  })
+
+  it('applies -100 to every missed day after the app was closed for days, and a perfect day first', async () => {
+    const t = await createTask(db, { title: 'Read', recurrence: { type: 'daily' } }, '2026-10-01')
+    await completeOccurrence(db, `${t.id}_2026-10-01`, photo(), '2026-10-01')
+    const result = await runCatchUp(db, '2026-10-04')
+    expect(result).toMatchObject({ finalized: 3 })
+    expect(await dayRows()).toEqual(['2026-10-01:perfect', '2026-10-02:broken', '2026-10-03:broken'])
+    expect(await dayXp()).toEqual(['2026-10-01:100', '2026-10-02:-100', '2026-10-03:-100'])
+  })
+
+  it('grows the perfect bonus across consecutive perfect days', async () => {
+    const t = await createTask(db, { title: 'Read', recurrence: { type: 'daily' } }, '2026-10-01')
+    for (const day of ['2026-10-01', '2026-10-02', '2026-10-03']) {
+      await runCatchUp(db, day)
+      await completeOccurrence(db, `${t.id}_${day}`, photo(), day)
+    }
+    await runCatchUp(db, '2026-10-04')
+    expect(await dayXp()).toEqual(['2026-10-01:100', '2026-10-02:115', '2026-10-03:130'])
+  })
+
+  it('records rest days without awarding XP and keeps the perfect bonus run going', async () => {
+    // Sunday-only task; 2026-10-04 is a Sunday
+    const t = await createTask(db, { title: 'Jogging', recurrence: { type: 'weekdays', days: [0] } }, '2026-10-04')
+    await completeOccurrence(db, `${t.id}_2026-10-04`, photo(), '2026-10-04')
+    await runCatchUp(db, '2026-10-06')
+    expect(await dayRows()).toEqual(['2026-10-04:perfect', '2026-10-05:rest'])
+    expect(await dayXp()).toEqual(['2026-10-04:100'])
+  })
+
+  it('skips paused days: no task exists at all', async () => {
+    const t = await createTask(db, { title: 'Read', recurrence: { type: 'daily' } }, '2026-10-01')
+    await archiveTask(db, t.id, '2026-10-02')
+    await runCatchUp(db, '2026-10-06')
+    // Oct 1 was a real day (task existed, never done) -> broken; Oct 2-5 had no tasks -> paused, not stored
+    expect(await dayRows()).toEqual(['2026-10-01:broken'])
+    expect(await dayXp()).toEqual(['2026-10-01:-100'])
+  })
+
+  it('still counts a day when its only task was completed and then deleted the same day', async () => {
+    const t = await createTask(db, { title: 'Read', recurrence: { type: 'daily' } }, '2026-10-01')
+    await completeOccurrence(db, `${t.id}_2026-10-01`, photo(), '2026-10-01')
+    await archiveTask(db, t.id, '2026-10-01')
+    await runCatchUp(db, '2026-10-02')
+    expect(await dayRows()).toEqual(['2026-10-01:perfect'])
+  })
+
+  it('is idempotent and does not duplicate or rewrite anything on repeat or later runs', async () => {
+    const t = await createTask(db, { title: 'Read', recurrence: { type: 'daily' } }, '2026-10-01')
+    await completeOccurrence(db, `${t.id}_2026-10-01`, photo(), '2026-10-01')
+    await runCatchUp(db, '2026-10-03')
+    const ledgerBefore = await db.ledger.toArray()
+    await runCatchUp(db, '2026-10-03')
+    await runCatchUp(db, '2026-10-03')
+    expect(await db.ledger.toArray()).toEqual(ledgerBefore)
+    expect(await db.days.count()).toBe(2)
+
+    await runCatchUp(db, '2026-10-04')
+    expect(await db.days.count()).toBe(3)
+    expect(await db.ledger.count()).toBe(ledgerBefore.length + 1)
+  })
+
+  it('recovers from lost bookkeeping without awarding XP twice', async () => {
+    const t = await createTask(db, { title: 'Read', recurrence: { type: 'daily' } }, '2026-10-01')
+    await completeOccurrence(db, `${t.id}_2026-10-01`, photo(), '2026-10-01')
+    await runCatchUp(db, '2026-10-03')
+    const ledgerBefore = (await db.ledger.toArray()).map((e) => e.id).sort()
+
+    await db.meta.delete('lastFinalizedDate')
+    await db.days.clear()
+    await runCatchUp(db, '2026-10-04')
+
+    expect((await db.ledger.toArray()).map((e) => e.id).sort()).toEqual([...ledgerBefore, 'day_2026-10-03'].sort())
+    expect(await db.days.count()).toBe(3)
+  })
+
+  it('scores history from before this feature existed (tasks and occurrences but no day records)', async () => {
+    const t = await createTask(db, { title: 'Read', recurrence: { type: 'daily' } }, '2026-10-01')
+    await completeOccurrence(db, `${t.id}_2026-10-01`, photo(), '2026-10-01')
+    await runCatchUp(db, '2026-10-02')
+    await db.meta.delete('lastFinalizedDate')
+    await db.days.clear()
+    await db.ledger.where('kind').equals('day_perfect').delete()
+
+    await runCatchUp(db, '2026-10-02')
+    expect(await dayRows()).toEqual(['2026-10-01:perfect'])
+    expect(await dayXp()).toEqual(['2026-10-01:100'])
   })
 })

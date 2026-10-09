@@ -1,4 +1,5 @@
 import type { DateStr } from '../domain/dates'
+import type { DayOutcome } from '../domain/days'
 import type { Recurrence } from '../domain/recurrence'
 import type { OccurrenceStatus } from '../domain/schedule'
 
@@ -39,16 +40,25 @@ export interface Proof {
   createdAt: number
 }
 
-/** Milestone 3 adds the day-level kinds (streak, perfect, broken). */
-export type LedgerKind = 'task_complete'
+/** `task_complete` is written when a task is done; the `day_*` kinds when a finished day is scored. */
+export type LedgerKind = 'task_complete' | 'day_perfect' | 'day_streak' | 'day_broken' | 'day_rest'
 
 /** Append-only. Totals, levels and streaks are derived from these rows, never stored. */
 export interface LedgerEntry {
-  /** Deterministic per source event, so awarding the same event twice is impossible. */
+  /** Deterministic per source event (`task_complete_<occurrenceId>`, `day_<date>`), so nothing is awarded twice. */
   id: string
-  date: import('../domain/dates').DateStr
+  date: DateStr
   kind: LedgerKind
   delta: number
   refId?: string
   createdAt: number
+}
+
+/** A finished day. Written once when the day is finalized and never changed afterwards. Paused days are not stored. */
+export interface DayRecord {
+  /** Primary key. */
+  date: DateStr
+  outcome: DayOutcome
+  scheduled: number
+  done: number
 }

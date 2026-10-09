@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 import { db } from '../db/schema'
 import { runCatchUp } from '../db/repo'
+import { StatsScreen } from './StatsScreen'
 import { TasksScreen } from './TasksScreen'
 import { TodayScreen } from './TodayScreen'
 import { useToday } from './useToday'
 
-type Tab = 'today' | 'tasks'
+type Tab = 'today' | 'tasks' | 'stats'
 
 export function App() {
   const today = useToday()
@@ -19,11 +20,9 @@ export function App() {
   return (
     <div className="app">
       <main>
-        {tab === 'today' ? (
-          <TodayScreen today={today} onGoToTasks={() => setTab('tasks')} />
-        ) : (
-          <TasksScreen today={today} />
-        )}
+        {tab === 'today' && <TodayScreen today={today} onGoToTasks={() => setTab('tasks')} />}
+        {tab === 'tasks' && <TasksScreen today={today} />}
+        {tab === 'stats' && <StatsScreen today={today} />}
       </main>
 
       <nav className="nav" aria-label="Main">
@@ -31,6 +30,7 @@ export function App() {
           [
             ['today', 'Today'],
             ['tasks', 'Tasks'],
+            ['stats', 'Stats'],
           ] as const
         ).map(([value, label]) => (
           <button

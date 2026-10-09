@@ -1,5 +1,5 @@
 import Dexie, { type Table } from 'dexie'
-import type { LedgerEntry, MetaRow, Occurrence, Proof, Task } from './types'
+import type { DayRecord, LedgerEntry, MetaRow, Occurrence, Proof, Task } from './types'
 
 export class QuestDB extends Dexie {
   tasks!: Table<Task, string>
@@ -7,6 +7,7 @@ export class QuestDB extends Dexie {
   meta!: Table<MetaRow, string>
   proofs!: Table<Proof, string>
   ledger!: Table<LedgerEntry, string>
+  days!: Table<DayRecord, string>
 
   constructor(name = 'daily-quest') {
     super(name)
@@ -18,6 +19,9 @@ export class QuestDB extends Dexie {
     this.version(2).stores({
       proofs: 'id',
       ledger: 'id, date, kind',
+    })
+    this.version(3).stores({
+      days: 'date',
     })
   }
 }

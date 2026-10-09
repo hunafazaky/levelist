@@ -4,14 +4,25 @@ import { db } from '../db/schema'
 import { completeOccurrence } from '../db/repo'
 import type { Occurrence } from '../db/types'
 import type { DateStr } from '../domain/dates'
-import { totalXp } from '../domain/xp'
+import { forecastDay, type DayForecast } from '../domain/streaks'
 import { formatDate } from './format'
 import { ProofSheet } from './ProofSheet'
 import { ProofThumb, ProofViewer } from './ProofImage'
+import { useProgress } from './useProgress'
 
 interface Props {
   today: DateStr
   onGoToTasks: () => void
+}
+
+const signed = (n: number) => (n < 0 ? `−${Math.abs(n)}` : `+${n}`)
+
+/** One plain sentence about what tonight's scoring will be, given how the day is going. */
+function forecastText(f: DayForecast, done: number, total: number): string {
+  if (done >= total) return `Perfect day. ${signed(f.xp)} XP bonus at midnight.`
+  if (done > 0)
+    return `Streak kept: ${signed(f.xp)} XP at midnight. Finish everything for ${signed(f.perfectXp)} XP instead.`
+  return `Finish one task to keep your streak and avoid ${signed(f.xp)} XP at midnight.`
 }
 
 export function TodayScreen({ today, onGoToTasks }: Props) {
@@ -21,11 +32,7 @@ export function TodayScreen({ today, onGoToTasks }: Props) {
 
   const occurrences = useLiveQuery(() => db.occurrences.where('date').equals(today).toArray(), [today])
   const hasAnyTask = useLiveQuery(async () => (await db.tasks.filter((t) => t.archivedOn === undefined).count()) > 0, [])
-  const xp = useLiveQuery(async () => {
-    const rows = await db.ledger.toArray()
-    rows.sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id))
-    return totalXp(rows.map((r) => r.delta))
-  }, [])
+  const data = useProgress()
 
   useEffect(() => {
     if (!flash) return
@@ -38,6 +45,12 @@ export function TodayScreen({ today, onGoToTasks }: Props) {
   )
   const doneCount = items.filter((o) => o.status === 'done').length
 
+  const progress = data?.progress
+  const forecast = data && items.length > 0 ? forecastDay(data.days, today, items.length, doneCount) : undefined
+  // Show today's contribution as soon as it is secured; the perfect streak only once everything is done.
+  const streak = forecast && doneCount > 0 ? forecast.streak : (progress?.streak ?? 0)
+  const perfect = forecast && doneCount === items.length ? forecast.perfectRun : (progress?.perfectRun ?? 0)
+
   return (
     <>
       <header className="top">
@@ -45,11 +58,26 @@ export function TodayScreen({ today, onGoToTasks }: Props) {
           <h1>Today</h1>
           <p className="muted">{formatDate(today)}</p>
         </div>
-        <div className="xp" aria-label={`${xp ?? 0} XP in total`}>
-          <span className="xp__value">{xp ?? 0}</span>
+        <div className="xp" aria-label={`${progress?.totalXp ?? 0} XP in total`}>
+          <span className="xp__value">{progress?.totalXp ?? 0}</span>
           <span className="xp__unit">XP</span>
         </div>
       </header>
+
+      <dl className="standing">
+        <div>
+          <dt>Level</dt>
+          <dd>{progress?.level.level ?? 0}</dd>
+        </div>
+        <div>
+          <dt>Day streak</dt>
+          <dd>{streak}</dd>
+        </div>
+        <div>
+          <dt>Perfect streak</dt>
+          <dd>{perfect}</dd>
+        </div>
+      </dl>
 
       <p className="flash" role="status" aria-live="polite">
         {flash}
@@ -94,6 +122,7 @@ export function TodayScreen({ today, onGoToTasks }: Props) {
               </li>
             ))}
           </ul>
+          {forecast && <p className="forecast">{forecastText(forecast, doneCount, items.length)}</p>}
         </>
       )}
 

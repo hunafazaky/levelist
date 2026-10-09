@@ -3,7 +3,7 @@ import 'fake-indexeddb/auto'
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createTask, runCatchUp } from '../db/repo'
+import { completeOccurrence, createTask, runCatchUp } from '../db/repo'
 import { db } from '../db/schema'
 import { TodayScreen } from './TodayScreen'
 
@@ -65,5 +65,46 @@ describe('TodayScreen', () => {
     await waitFor(() => expect(screen.getByLabelText('100 XP in total')).toBeTruthy())
     expect(await db.ledger.count()).toBe(1)
     expect(await db.proofs.count()).toBe(1)
+  })
+
+  describe('day forecast', () => {
+    async function twoTasks() {
+      const a = await createTask(db, { title: 'Jogging', recurrence: { type: 'daily' } }, TODAY)
+      await createTask(db, { title: 'Reading', recurrence: { type: 'daily' } }, TODAY)
+      await runCatchUp(db, TODAY)
+      return a
+    }
+    const photo = { blob: new Blob(['x'], { type: 'image/jpeg' }), mime: 'image/jpeg' }
+    const standing = (label: string) => screen.getByText(label).parentElement!.textContent
+
+    it('warns about the penalty while nothing is done', async () => {
+      await twoTasks()
+      render(<TodayScreen today={TODAY} onGoToTasks={() => {}} />)
+      expect(
+        await screen.findByText('Finish one task to keep your streak and avoid \u2212100 XP at midnight.'),
+      ).toBeTruthy()
+      expect(standing('Day streak')).toBe('Day streak0')
+    })
+
+    it('shows the streak bonus and what finishing everything would earn, and counts the streak', async () => {
+      const a = await twoTasks()
+      await completeOccurrence(db, `${a.id}_${TODAY}`, photo, TODAY)
+      render(<TodayScreen today={TODAY} onGoToTasks={() => {}} />)
+      expect(
+        await screen.findByText('Streak kept: +50 XP at midnight. Finish everything for +100 XP instead.'),
+      ).toBeTruthy()
+      expect(standing('Day streak')).toBe('Day streak1')
+      expect(standing('Perfect streak')).toBe('Perfect streak0')
+    })
+
+    it('announces a perfect day once everything is done', async () => {
+      const a = await twoTasks()
+      const b = (await db.occurrences.where('date').equals(TODAY).toArray()).find((o) => o.taskId !== a.id)!
+      await completeOccurrence(db, `${a.id}_${TODAY}`, photo, TODAY)
+      await completeOccurrence(db, b.id, photo, TODAY)
+      render(<TodayScreen today={TODAY} onGoToTasks={() => {}} />)
+      expect(await screen.findByText('Perfect day. +100 XP bonus at midnight.')).toBeTruthy()
+      expect(standing('Perfect streak')).toBe('Perfect streak1')
+    })
   })
 })

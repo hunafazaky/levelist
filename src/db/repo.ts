@@ -1,15 +1,19 @@
 import { CONFIG } from '../domain/config'
-import { addDays, type DateStr } from '../domain/dates'
+import { addDays, dateRange, type DateStr } from '../domain/dates'
+import { classifyDay, type DayOutcome } from '../domain/days'
 import {
   normalizeRecurrence,
+  taskActiveOn,
   validateRecurrence,
   type Recurrence,
 } from '../domain/recurrence'
 import { missingOccurrences, occurrencesToExpire, staleOccurrences } from '../domain/schedule'
+import { replayDays } from '../domain/streaks'
 import type { QuestDB } from './schema'
-import type { LedgerEntry, Occurrence, Proof, Task } from './types'
+import type { DayRecord, LedgerEntry, LedgerKind, Occurrence, Proof, Task } from './types'
 
 const LAST_CATCH_UP = 'lastCatchUpDate'
+const LAST_FINALIZED = 'lastFinalizedDate'
 
 export interface TaskInput {
   title: string
@@ -115,16 +119,85 @@ export async function archiveTask(db: QuestDB, id: string, today: DateStr, now =
 export interface CatchUpResult {
   created: number
   expired: number
+  /** Finished days that were scored (paused days are skipped). */
+  finalized: number
+}
+
+const DAY_KIND: Partial<Record<DayOutcome, LedgerKind>> = {
+  perfect: 'day_perfect',
+  streak: 'day_streak',
+  broken: 'day_broken',
+  rest: 'day_rest',
 }
 
 /**
- * Brings occurrences up to date as of `today`:
+ * Scores every finished day that has not been scored yet (from the day after the last one, up to yesterday):
+ * classifies it from its occurrences, stores a DayRecord, and appends the day's XP to the ledger.
+ *
+ * Classification looks at occurrences first, so a task completed and then deleted the same day still counts.
+ * Existing records and ledger entries are never overwritten, which makes this safe to repeat.
+ * Must run after expiry, inside a transaction on tasks, occurrences, meta, days and ledger.
+ */
+async function finalizeDays(db: QuestDB, today: DateStr, now: number): Promise<number> {
+  const tasks = await db.tasks.toArray()
+  const lastRow = await db.meta.get(LAST_FINALIZED)
+  const last = typeof lastRow?.value === 'string' ? lastRow.value : undefined
+  const earliest = tasks.reduce<DateStr | undefined>(
+    (min, t) => (min === undefined || t.createdOn < min ? t.createdOn : min),
+    undefined,
+  )
+  const from = last !== undefined ? addDays(last, 1) : earliest
+  const to = addDays(today, -1)
+  if (from === undefined || from > to) return 0
+
+  const occurrences = await db.occurrences.where('date').between(from, to, true, true).toArray()
+  const byDate = new Map<DateStr, Occurrence[]>()
+  for (const o of occurrences) byDate.set(o.date, [...(byDate.get(o.date) ?? []), o])
+
+  const alreadyScored = new Set((await db.days.where('date').between(from, to, true, true).toArray()).map((d) => d.date))
+  const records: DayRecord[] = []
+  for (const date of dateRange(from, to)) {
+    if (alreadyScored.has(date)) continue
+    const list = byDate.get(date) ?? []
+    const outcome = classifyDay({
+      scheduled: list.length,
+      done: list.filter((o) => o.status === 'done').length,
+      hasActiveTask: tasks.some((t) => taskActiveOn(t, date)),
+    })
+    if (outcome === 'paused') continue
+    records.push({ date, outcome, scheduled: list.length, done: list.filter((o) => o.status === 'done').length })
+  }
+  if (records.length > 0) await db.days.bulkAdd(records)
+
+  // The bonus for a perfect day depends on the run before it, so score from the full history.
+  const results = replayDays(await db.days.orderBy('date').toArray())
+  const fresh = new Set(records.map((r) => r.date))
+  const candidates: LedgerEntry[] = results
+    .filter((r) => fresh.has(r.date) && r.xp !== 0)
+    .map((r) => ({
+      id: `day_${r.date}`,
+      date: r.date,
+      kind: DAY_KIND[r.outcome]!,
+      delta: r.xp,
+      createdAt: now,
+    }))
+  const existing = await db.ledger.bulkGet(candidates.map((c) => c.id))
+  const toAdd = candidates.filter((_, i) => existing[i] === undefined)
+  if (toAdd.length > 0) await db.ledger.bulkAdd(toAdd)
+
+  await db.meta.put({ key: LAST_FINALIZED, value: to })
+  return records.length
+}
+
+/**
+ * Brings everything up to date as of `today`:
  *  1. creates every missing occurrence from the day after the last catch-up through today
  *  2. expires pending occurrences from days before today
+ *  3. scores every finished day not scored yet (streaks, XP, penalties)
  * Idempotent and safe to call on every app open or midnight rollover.
  */
-export async function runCatchUp(db: QuestDB, today: DateStr): Promise<CatchUpResult> {
-  return db.transaction('rw', db.tasks, db.occurrences, db.meta, async () => {
+export async function runCatchUp(db: QuestDB, today: DateStr, now = Date.now()): Promise<CatchUpResult> {
+  return db.transaction('rw', [db.tasks, db.occurrences, db.meta, db.days, db.ledger], async () => {
     const tasks = await db.tasks.toArray()
     const lastRow = await db.meta.get(LAST_CATCH_UP)
     const last = typeof lastRow?.value === 'string' ? lastRow.value : undefined
@@ -160,7 +233,8 @@ export async function runCatchUp(db: QuestDB, today: DateStr): Promise<CatchUpRe
     }
 
     await db.meta.put({ key: LAST_CATCH_UP, value: today })
-    return { created, expired: toExpire.length }
+    const finalized = await finalizeDays(db, today, now)
+    return { created, expired: toExpire.length, finalized }
   })
 }
 

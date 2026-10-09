@@ -5,7 +5,7 @@
   --surface: #ffffff;
   --line: #d5dae8;
   --xp: #f4b223;
-  --jade: #1f8f82;
+  --jade: #17776c;
   --rose: #c93a47;
   --radius: 14px;
   --font: ui-rounded, 'SF Pro Rounded', 'Nunito', 'Segoe UI', system-ui, -apple-system, Roboto, sans-serif;
@@ -350,7 +350,7 @@ input.number {
   position: fixed;
   inset: auto 0 0 0;
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 0.5rem;
   max-width: 34rem;
   margin: 0 auto;
@@ -484,4 +484,221 @@ label.btn {
 .visually-hidden:focus-visible ~ .actions label.btn {
   outline: 3px solid var(--jade);
   outline-offset: 2px;
+}
+
+/* Standing strip on Today */
+.standing {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+  margin: 0 0 0.75rem;
+}
+.standing > div {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 0.6rem 0.8rem;
+  background: var(--surface);
+  border: 1.5px solid var(--line);
+  border-radius: 12px;
+}
+.standing dt,
+.figures dt {
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+  font-weight: 650;
+}
+.standing dd,
+.figures dd {
+  margin: 0;
+  font-size: 1.6rem;
+  font-weight: 800;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+.forecast {
+  margin-top: 0.75rem;
+  color: var(--ink-soft);
+  font-weight: 650;
+}
+
+/* Stats */
+.panel {
+  display: grid;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+  padding: 1.1rem 1.2rem;
+  background: var(--surface);
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius);
+}
+.section-title {
+  margin: 1.4rem 0 0.1rem;
+}
+.achievements-count {
+  margin-bottom: 0.6rem;
+}
+.bar {
+  width: 100%;
+  height: 0.9rem;
+  appearance: none;
+  border: 0;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--mist);
+}
+.bar::-webkit-progress-bar {
+  background: var(--mist);
+}
+.bar::-webkit-progress-value {
+  background: var(--xp);
+  border-radius: 999px;
+}
+.bar::-moz-progress-bar {
+  background: var(--xp);
+  border-radius: 999px;
+}
+.figures {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.75rem 1rem;
+  margin: 0;
+}
+
+/* Consistency calendar: outcomes differ by fill and border style, not by colour alone */
+.cal {
+  display: grid;
+  gap: 0.3rem;
+}
+.cal__head,
+.cal__week {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 0.3rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cal__head span {
+  text-align: center;
+  color: var(--ink-soft);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+.cal__cell {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  min-width: 0;
+  font-size: 0.75rem;
+  font-weight: 650;
+  color: var(--ink-soft);
+  border: 1.5px solid transparent;
+  border-radius: 8px;
+  background: var(--mist);
+}
+.cal__cell.is-perfect {
+  background: var(--jade);
+  border-color: var(--jade);
+  color: #fff;
+}
+.cal__cell.is-streak {
+  background: color-mix(in srgb, var(--jade) 22%, var(--surface));
+  border-color: var(--jade);
+  color: var(--ink);
+}
+.cal__cell.is-broken {
+  border-color: var(--rose);
+  color: var(--ink);
+  background: repeating-linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--rose) 30%, var(--surface)) 0 3px,
+    var(--surface) 3px 6px
+  );
+}
+.cal__cell.is-rest {
+  border: 1.5px dashed var(--ink-soft);
+  background: transparent;
+  color: var(--ink-soft);
+}
+.cal__cell.is-today {
+  border-color: var(--xp);
+  box-shadow: 0 0 0 2px var(--xp);
+  color: var(--ink);
+}
+.cal__cell.is-future {
+  opacity: 0.4;
+}
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+}
+.legend li {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.legend .cal__cell {
+  width: 1.1rem;
+  aspect-ratio: 1;
+}
+
+/* Achievements */
+.ach {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.8rem 1.1rem;
+  color: var(--ink-soft);
+}
+.ach__text {
+  display: grid;
+  min-width: 0;
+}
+.ach__title {
+  font-weight: 700;
+}
+.ach__desc {
+  font-size: 0.9rem;
+}
+.ach__status {
+  flex: none;
+  font-size: 0.9rem;
+  font-weight: 650;
+}
+.ach.is-unlocked {
+  color: var(--ink);
+}
+.ach.is-unlocked .ach__status {
+  color: var(--jade);
+}
+.tag {
+  margin-left: 0.5rem;
+  padding: 0.05rem 0.55rem;
+  color: #232b55;
+  font-size: 0.75rem;
+  font-weight: 800;
+  background: var(--xp);
+  border-radius: 999px;
+}
+
+@media (max-width: 22rem) {
+  .standing dd {
+    font-size: 1.3rem;
+  }
+}
+
+/* White on the lighter dark-mode teal is too faint; use dark ink there. */
+@media (prefers-color-scheme: dark) {
+  .cal__cell.is-perfect,
+  .day.is-on {
+    color: #141935;
+  }
 }
