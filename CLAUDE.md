@@ -8,7 +8,7 @@ Owner: Zaky (web developer). Keep code clean and conventional; this is also port
 
 - TypeScript (strict), Vite, React 18
 - Dexie (IndexedDB) + dexie-react-hooks
-- Vitest + fake-indexeddb for tests
+- Vitest + fake-indexeddb for tests; jsdom + Testing Library for the Today screen flow
 - vite-plugin-pwa (Workbox) — added in milestone 5
 - Web Crypto API (PBKDF2 → AES-GCM) for encrypted export — milestone 4
 - Plain CSS, system font stack (the app must work fully offline, so no remote fonts)
@@ -16,7 +16,7 @@ Owner: Zaky (web developer). Keep code clean and conventional; this is also port
 ## Commands
 
 - `npm run dev` — dev server
-- `npm test` — Vitest (run once), `npm run test:watch`
+- `npm test` — Vitest (run once; domain, repository and component tests), `npm run test:watch`
 - `npm run typecheck` — `tsc --noEmit`
 - `npm run build` — typecheck + production build
 
@@ -29,9 +29,11 @@ src/
     dates.ts       DateStr helpers ("YYYY-MM-DD", local calendar dates)
     recurrence.ts  Does a task apply on a date? Next N dates.
     schedule.ts    Which occurrences must exist / expire for a date range
-    (later) scoring.ts, streaks.ts, levels.ts, achievements.ts
+    xp.ts          Total XP from ledger deltas (running floor at 0)
+    (later) streaks.ts, levels.ts, achievements.ts
   db/          Dexie schema + repositories (the only code that touches IndexedDB)
-  ui/          React components
+  media/       Browser-only image helpers (compressImage: ≤1280px, WebP/JPEG)
+  ui/          React components (App = tabs; TodayScreen, TasksScreen, ProofSheet, ProofImage)
 ```
 
 Rules:
@@ -52,8 +54,8 @@ type Recurrence =
 Task        { id, title, recurrence, createdOn: DateStr, archivedOn?: DateStr, createdAt, updatedAt }
 Occurrence  { id, taskId, date: DateStr, title (snapshot), status: 'pending'|'done'|'expired', proofId?, completedAt? }
             unique on [taskId+date]
-Proof       { id, blob, mime, createdAt }                      (milestone 2)
-LedgerEntry { id, date: DateStr, kind, delta, refId?, createdAt } (milestone 2/3)
+Proof       { id, blob, mime, createdAt }
+LedgerEntry { id, date: DateStr, kind, delta, refId?, createdAt }  id is deterministic (`task_complete_<occurrenceId>`), so an event can never be awarded twice
 Meta        { key, value }  e.g. lastCatchUpDate
 ```
 
@@ -70,19 +72,26 @@ An occurrence belongs to exactly one calendar day: it appears at the start of it
 - Today's still-pending occurrence is re-synced when a task is edited or archived: it is created if the new recurrence applies today, removed if it no longer does.
 - Title edits update the title of pending occurrences only.
 
+### Completing a task
+- Only today's pending occurrence can be completed, and only with a proof photo (`completeOccurrence`). The photo is stored and the +100 XP ledger entry is written in one transaction.
+- Past days cannot be completed, even if the catch-up job has not yet expired them. Done tasks cannot be completed again.
+- Proof capture uses the camera (`<input capture>`) on phones; desktop browsers fall back to a file picker. Photos are downscaled to ≤1280px and re-encoded (WebP, JPEG fallback). Proof is honor-based: offline, nothing can verify it.
+
 ### Day outcome (for each finalized day)
 - **paused** — no active task exists at all (every task archived or none created yet). Does not extend or break anything, earns nothing.
-- **perfect** — no task scheduled that day (rest day), or every scheduled occurrence is done.
+- **rest** — tasks exist but none is scheduled that day. Keeps both streaks alive and counts toward streak length and week achievements, but earns **0 XP** and does not advance the perfect-bonus counter.
+- **perfect** — at least one task scheduled and every scheduled occurrence is done.
 - **streak** — at least one done, but not all.
 - **broken** — tasks were scheduled and none was done (all expired).
 
-Both `streak` and `perfect` extend the **streak**. Only `perfect` extends the **perfect streak**. `streak` or `broken` resets the perfect streak. Paused days are skipped (neither extend nor reset).
+`streak`, `perfect` and `rest` days extend the **streak**. `perfect` and `rest` extend the **perfect streak**. `streak` or `broken` resets the perfect streak. Paused days are skipped (neither extend nor reset). The perfect-bonus counter `n` counts only real `perfect` days in the current run; `rest` days keep the run alive without increasing `n`.
 
 ### XP
 | Event | XP |
 | --- | --- |
 | Complete a task | +100 (awarded at completion) |
 | Task expired | 0 |
+| Day outcome `rest` | 0 |
 | Day outcome `broken` | −100 |
 | Day outcome `streak` | +50 |
 | Day outcome `perfect`, nth consecutive perfect day | +100 + 15·(n−1) → 100, 115, 130, 145, … |
@@ -104,18 +113,22 @@ Exponential curve. XP needed to go from level L to L+1: `round(200 · 1.15^L)` (
 ## Milestones
 
 - [x] **M1 — Tasks and schedule engine**: scaffold, Dexie schema, task CRUD UI, recurrence + occurrence materialize/expire logic with unit tests, catch-up job
-- [ ] **M2 — Today screen, proof and XP**: today's occurrences, camera-first proof capture (compressed Blob), mark done, ledger entries for +100
+- [x] **M2 — Today screen, proof and XP**: today's occurrences, camera-first proof capture (compressed Blob), mark done, ledger entries for +100, total XP shown
 - [ ] **M3 — Streaks, daily outcome, levels, achievements**: day finalization, streak/perfect-streak math, level curve, achievement unlocks, stats/heatmap
 - [ ] **M4 — Export/import + encryption**: zip bundle with proofs, versioned format, AES-GCM with PBKDF2, replace and merge modes
 - [ ] **M5 — PWA polish**: manifest, service worker, install prompt, `navigator.storage.persist()`, backup reminders
 - [ ] **Later**: reward shop (spend XP), notifications (best effort), monthly recurrence, `dayStartHour` for night owls
 
-## Assumptions to confirm with the owner
+## Decisions (confirmed by the owner)
 
-1. **Perfect-streak formula.** The brief's example (100, 130, 145) skips 115; assumed typo → 100 + 15·(n−1).
-2. **Rest days earn XP.** The brief says a day with no tasks is "perfect by default". Taken literally it earns the perfect-streak XP, so a single weekly task gives six free perfect days. Config flag planned: `restDayAwardsXp`. Recommendation: keep rest days alive for the streak but award no XP.
-3. **Level growth factor** is not specified (only the 200 base). 1.15 assumed; because levels are derived, it can be tuned anytime.
-4. **Streak and perfect are exclusive** per day (a perfect day gets the perfect bonus, not +50 on top).
-5. **Same XP for every task** (100). Per-task weights are possible later.
-6. **"n weeks straight"** means n × 7 consecutive days, not calendar weeks.
-7. **Pending items can be removed today** (by deleting/editing the task), which avoids expiry. Accepted for now since it is self-policed.
+1. **Perfect-streak XP** is 100 + 15·(n−1): 100, 115, 130, 145, …
+2. **Rest days keep streaks alive but earn no XP** (`CONFIG.restDayAwardsXp = false`).
+3. **Level growth** is ×1.15 per level on the 200 XP base. Levels are derived, so this stays tunable.
+
+## Assumptions still open
+
+1. **Streak and perfect are exclusive** per day (a perfect day gets the perfect bonus, not +50 on top).
+2. **Same XP for every task** (100). Per-task weights are possible later.
+3. **"n weeks straight"** means n × 7 consecutive days, not calendar weeks.
+4. **Pending items can be removed today** (by deleting/editing the task), which avoids expiry. Accepted for now since it is self-policed.
+5. **Total XP floors at 0**, so a −100 day at 0 XP costs nothing.

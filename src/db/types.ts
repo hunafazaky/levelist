@@ -31,3 +31,24 @@ export interface MetaRow {
   key: string
   value: unknown
 }
+
+export interface Proof {
+  id: string
+  blob: Blob
+  mime: string
+  createdAt: number
+}
+
+/** Milestone 3 adds the day-level kinds (streak, perfect, broken). */
+export type LedgerKind = 'task_complete'
+
+/** Append-only. Totals, levels and streaks are derived from these rows, never stored. */
+export interface LedgerEntry {
+  /** Deterministic per source event, so awarding the same event twice is impossible. */
+  id: string
+  date: import('../domain/dates').DateStr
+  kind: LedgerKind
+  delta: number
+  refId?: string
+  createdAt: number
+}

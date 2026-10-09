@@ -5,6 +5,8 @@ export const CONFIG = {
   streakXp: 50,
   perfectBaseXp: 100,
   perfectStepXp: 15,
+  /** Rest days keep streaks alive but earn nothing (decided with the owner). */
+  restDayAwardsXp: false,
   levelBaseXp: 200,
   levelGrowth: 1.15,
   weekTiers: [1, 2, 4, 8, 12, 26, 52],

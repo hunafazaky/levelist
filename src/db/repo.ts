@@ -1,3 +1,4 @@
+import { CONFIG } from '../domain/config'
 import { addDays, type DateStr } from '../domain/dates'
 import {
   normalizeRecurrence,
@@ -6,7 +7,7 @@ import {
 } from '../domain/recurrence'
 import { missingOccurrences, occurrencesToExpire, staleOccurrences } from '../domain/schedule'
 import type { QuestDB } from './schema'
-import type { Occurrence, Task } from './types'
+import type { LedgerEntry, Occurrence, Proof, Task } from './types'
 
 const LAST_CATCH_UP = 'lastCatchUpDate'
 
@@ -160,5 +161,47 @@ export async function runCatchUp(db: QuestDB, today: DateStr): Promise<CatchUpRe
 
     await db.meta.put({ key: LAST_CATCH_UP, value: today })
     return { created, expired: toExpire.length }
+  })
+}
+
+export interface ProofInput {
+  blob: Blob
+  mime: string
+}
+
+/**
+ * Marks today's pending occurrence as done. A proof image is required: there is no way to complete without one.
+ * Stores the proof and appends the +XP ledger entry in the same transaction.
+ */
+export async function completeOccurrence(
+  db: QuestDB,
+  occurrenceId: string,
+  proof: ProofInput,
+  today: DateStr,
+  now = Date.now(),
+): Promise<LedgerEntry> {
+  if (!proof.blob || proof.blob.size === 0) throw new Error('Add a photo as proof first.')
+
+  return db.transaction('rw', db.occurrences, db.proofs, db.ledger, async () => {
+    const occ = await db.occurrences.get(occurrenceId)
+    if (!occ) throw new Error('This task is no longer on your list.')
+    if (occ.status === 'done') throw new Error('This task is already done.')
+    if (occ.status === 'expired' || occ.date < today) throw new Error('That day is over, so this task has expired.')
+    if (occ.date > today) throw new Error('This task is not due yet.')
+
+    const proofRow: Proof = { id: crypto.randomUUID(), blob: proof.blob, mime: proof.mime, createdAt: now }
+    await db.proofs.add(proofRow)
+    await db.occurrences.update(occ.id, { status: 'done', proofId: proofRow.id, completedAt: now })
+
+    const entry: LedgerEntry = {
+      id: `task_complete_${occ.id}`,
+      date: occ.date,
+      kind: 'task_complete',
+      delta: CONFIG.taskXp,
+      refId: occ.id,
+      createdAt: now,
+    }
+    await db.ledger.add(entry)
+    return entry
   })
 }
