@@ -8,7 +8,9 @@
   --jade: #17776c;
   --rose: #c93a47;
   --radius: 14px;
-  --font: ui-rounded, 'SF Pro Rounded', 'Nunito', 'Segoe UI', system-ui, -apple-system, Roboto, sans-serif;
+  --font:
+    ui-rounded, "SF Pro Rounded", "Nunito", "Segoe UI", system-ui,
+    -apple-system, Roboto, sans-serif;
   color-scheme: light;
 }
 
@@ -66,7 +68,8 @@ p {
 .app {
   max-width: 34rem;
   margin: 0 auto;
-  padding: max(1.25rem, env(safe-area-inset-top)) 1.25rem max(2rem, env(safe-area-inset-bottom));
+  padding: max(1.25rem, env(safe-area-inset-top)) 1.25rem
+    max(2rem, env(safe-area-inset-bottom));
 }
 
 .top {
@@ -131,8 +134,8 @@ p {
   display: grid;
   grid-template-columns: 1fr auto;
   grid-template-areas:
-    'title next'
-    'meta  next';
+    "title next"
+    "meta  next";
   align-items: center;
   column-gap: 1rem;
   width: 100%;
@@ -213,14 +216,15 @@ p {
   min-width: 0;
 }
 .field > span,
-.field > legend {
+.field > legend,
+.field > label {
   padding: 0;
   font-weight: 700;
   font-size: 0.95rem;
 }
-input[type='text'],
+input[type="text"],
 input:not([type]),
-input[type='number'] {
+input[type="number"] {
   font: inherit;
   color: inherit;
   background: var(--mist);
@@ -321,7 +325,9 @@ input.number {
   .btn,
   .day,
   .task {
-    transition: background-color 120ms ease, border-color 120ms ease;
+    transition:
+      background-color 120ms ease,
+      border-color 120ms ease;
   }
 }
 
@@ -350,7 +356,7 @@ input.number {
   position: fixed;
   inset: auto 0 0 0;
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 0.5rem;
   max-width: 34rem;
   margin: 0 auto;
@@ -701,4 +707,110 @@ label.btn {
   .day.is-on {
     color: #141935;
   }
+}
+
+/* Backup */
+input[type="password"] {
+  font: inherit;
+  color: inherit;
+  background: var(--mist);
+  border: 1.5px solid var(--line);
+  border-radius: 10px;
+  padding: 0.65rem 0.8rem;
+  min-height: 2.75rem;
+  width: 100%;
+}
+.stack {
+  display: grid;
+  gap: 0.9rem;
+}
+.check,
+.choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+}
+.check label,
+.choice label {
+  display: block;
+  font-weight: 650;
+  cursor: pointer;
+}
+.check input,
+.choice input {
+  flex: none;
+  width: 1.4rem;
+  height: 1.4rem;
+  margin: 0.1rem 0 0;
+  accent-color: var(--jade);
+}
+.check .hint,
+.choice .hint,
+.field .hint {
+  display: block;
+  min-height: 0;
+  font-weight: 400;
+}
+.choice + .choice {
+  margin-top: 0.7rem;
+}
+.success {
+  color: var(--jade);
+  font-weight: 700;
+}
+.btn--danger-solid {
+  color: #fff;
+  background: var(--rose);
+  border-color: var(--rose);
+}
+.row__note {
+  flex: none;
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+  font-weight: 650;
+}
+.visually-hidden:focus-visible + label.btn {
+  outline: 3px solid var(--jade);
+  outline-offset: 2px;
+}
+label.btn[aria-disabled="true"] {
+  opacity: 0.55;
+  pointer-events: none;
+}
+@media (max-width: 24rem) {
+  .nav__item {
+    font-size: 0.9rem;
+  }
+}
+
+/* Notices: update ready, backup reminder */
+.notice {
+  display: grid;
+  gap: 0.6rem;
+  margin-bottom: 0.9rem;
+  padding: 0.9rem 1.1rem;
+  background: var(--surface);
+  border: 1.5px solid var(--xp);
+  border-radius: var(--radius);
+}
+.notice p {
+  margin: 0;
+  font-weight: 650;
+}
+
+/* This app: install, offline, storage */
+.facts {
+  display: grid;
+  gap: 1rem;
+  margin: 0;
+}
+.facts dt {
+  font-weight: 700;
+}
+.facts dd {
+  margin: 0;
+  color: var(--ink-soft);
+}
+.facts .actions {
+  margin-top: 0.5rem;
 }

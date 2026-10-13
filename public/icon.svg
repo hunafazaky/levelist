@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <title>Daily Quest</title>
+  <rect width="512" height="512" fill="#232b55"/>
+  <circle cx="256" cy="256" r="150" fill="none" stroke="#3a4478" stroke-width="28"/>
+  <circle cx="256" cy="256" r="150" fill="none" stroke="#2fb5a5" stroke-width="28" stroke-linecap="round" stroke-dasharray="660 943" transform="rotate(-90 256 256)"/>
+  <circle cx="256" cy="256" r="104" fill="#f4b223"/>
+  <path d="M207 259l38 38 62-77" fill="none" stroke="#232b55" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

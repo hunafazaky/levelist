@@ -1,43 +1,56 @@
-import { useMemo } from 'react'
-import type { DateStr } from '../domain/dates'
-import { diffDays } from '../domain/dates'
-import type { DayOutcome } from '../domain/days'
-import { buildCalendar } from '../domain/calendar'
-import { formatDate } from './format'
-import { useProgress } from './useProgress'
+import { useMemo } from "react";
+import type { DateStr } from "../domain/dates";
+import { diffDays } from "../domain/dates";
+import type { DayOutcome } from "../domain/days";
+import { buildCalendar } from "../domain/calendar";
+import { formatDate } from "./format";
+import { useProgress } from "./useProgress";
 
-const WEEKS = 12
-const NEW_FOR_DAYS = 3
+const WEEKS = 12;
+const NEW_FOR_DAYS = 3;
 
 const OUTCOME_LABEL: Record<DayOutcome, string> = {
-  perfect: 'Perfect day',
-  streak: 'Streak day',
-  broken: 'Missed day',
-  rest: 'Rest day',
-  paused: 'No tasks yet',
-}
+  perfect: "Perfect day",
+  streak: "Streak day",
+  broken: "Missed day",
+  rest: "Rest day",
+  paused: "No tasks yet",
+};
 
 export function StatsScreen({ today }: { today: DateStr }) {
-  const data = useProgress()
+  const data = useProgress();
 
   const grid = useMemo(
-    () => buildCalendar(today, WEEKS, new Map((data?.days ?? []).map((d) => [d.date, d.outcome]))),
+    () =>
+      buildCalendar(
+        today,
+        WEEKS,
+        new Map((data?.days ?? []).map((d) => [d.date, d.outcome])),
+      ),
     [today, data?.days],
-  )
+  );
 
-  if (!data) return null
-  const { progress } = data
-  const { level } = progress
+  if (!data) return null;
+  const { progress } = data;
+  const { level } = progress;
 
-  const counts = { perfect: 0, streak: 0, broken: 0, rest: 0 }
+  const counts = { perfect: 0, streak: 0, broken: 0, rest: 0 };
   for (const cell of grid.flat()) {
-    if (cell.outcome && cell.outcome !== 'paused') counts[cell.outcome]++
+    if (cell.outcome && cell.outcome !== "paused") counts[cell.outcome]++;
   }
 
   const unlocked = progress.achievements
     .filter((a) => a.unlockedOn !== undefined)
-    .sort((a, b) => (a.unlockedOn! < b.unlockedOn! ? 1 : a.unlockedOn! > b.unlockedOn! ? -1 : 0))
-  const locked = progress.achievements.filter((a) => a.unlockedOn === undefined)
+    .sort((a, b) =>
+      a.unlockedOn! < b.unlockedOn!
+        ? 1
+        : a.unlockedOn! > b.unlockedOn!
+          ? -1
+          : 0,
+    );
+  const locked = progress.achievements.filter(
+    (a) => a.unlockedOn === undefined,
+  );
 
   return (
     <>
@@ -47,9 +60,15 @@ export function StatsScreen({ today }: { today: DateStr }) {
 
       <section className="panel" aria-labelledby="level-h">
         <h2 id="level-h">Level {level.level}</h2>
-        <progress className="bar" max={level.xpForNext} value={level.xpIntoLevel} aria-labelledby="level-h" />
+        <progress
+          className="bar"
+          max={level.xpForNext}
+          value={level.xpIntoLevel}
+          aria-labelledby="level-h"
+        />
         <p className="muted">
-          {level.xpIntoLevel} of {level.xpForNext} XP to level {level.level + 1}. Total {progress.totalXp} XP.
+          {level.xpIntoLevel} of {level.xpForNext} XP to level {level.level + 1}
+          . Total {progress.totalXp} XP.
         </p>
       </section>
 
@@ -79,11 +98,16 @@ export function StatsScreen({ today }: { today: DateStr }) {
       <section className="panel" aria-labelledby="cal-h">
         <h2 id="cal-h">Last {WEEKS} weeks</h2>
         <p className="muted">
-          {counts.perfect} perfect, {counts.streak} streak, {counts.broken} missed, {counts.rest} rest.
+          {counts.perfect} perfect, {counts.streak} streak, {counts.broken}{" "}
+          missed, {counts.rest} rest.
         </p>
-        <div className="cal" role="group" aria-label="Day by day results, Monday to Sunday">
+        <div
+          className="cal"
+          role="group"
+          aria-label="Day by day results, Monday to Sunday"
+        >
           <div className="cal__head" aria-hidden="true">
-            {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => (
+            {["M", "T", "W", "T", "F", "S", "S"].map((d, i) => (
               <span key={i}>{d}</span>
             ))}
           </div>
@@ -94,24 +118,24 @@ export function StatsScreen({ today }: { today: DateStr }) {
                   ? `${formatDate(cell.date)}: upcoming`
                   : cell.isToday
                     ? `${formatDate(cell.date)}: today, still in progress`
-                    : `${formatDate(cell.date)}: ${cell.outcome ? OUTCOME_LABEL[cell.outcome] : 'no result'}`
+                    : `${formatDate(cell.date)}: ${cell.outcome ? OUTCOME_LABEL[cell.outcome] : "no result"}`;
                 return (
                   <li
                     key={cell.date}
                     className={[
-                      'cal__cell',
-                      cell.outcome && !cell.isToday ? `is-${cell.outcome}` : '',
-                      cell.isToday ? 'is-today' : '',
-                      cell.isFuture ? 'is-future' : '',
+                      "cal__cell",
+                      cell.outcome && !cell.isToday ? `is-${cell.outcome}` : "",
+                      cell.isToday ? "is-today" : "",
+                      cell.isFuture ? "is-future" : "",
                     ]
                       .filter(Boolean)
-                      .join(' ')}
+                      .join(" ")}
                     aria-label={label}
                     title={label}
                   >
                     {Number(cell.date.slice(8))}
                   </li>
-                )
+                );
               })}
             </ol>
           ))}
@@ -141,9 +165,14 @@ export function StatsScreen({ today }: { today: DateStr }) {
         </p>
         <ul className="tasks">
           {[...unlocked, ...locked].map((a) => {
-            const isNew = a.unlockedOn !== undefined && diffDays(a.unlockedOn, today) <= NEW_FOR_DAYS
+            const isNew =
+              a.unlockedOn !== undefined &&
+              diffDays(a.unlockedOn, today) <= NEW_FOR_DAYS;
             return (
-              <li key={a.id} className={a.unlockedOn ? 'ach is-unlocked' : 'ach'}>
+              <li
+                key={a.id}
+                className={a.unlockedOn ? "ach is-unlocked" : "ach"}
+              >
                 <div className="ach__text">
                   <span className="ach__title">
                     {a.title}
@@ -151,12 +180,14 @@ export function StatsScreen({ today }: { today: DateStr }) {
                   </span>
                   <span className="ach__desc">{a.description}</span>
                 </div>
-                <span className="ach__status">{a.unlockedOn ? formatDate(a.unlockedOn) : 'Locked'}</span>
+                <span className="ach__status">
+                  {a.unlockedOn ? formatDate(a.unlockedOn) : "Locked"}
+                </span>
               </li>
-            )
+            );
           })}
         </ul>
       </section>
     </>
-  )
+  );
 }
