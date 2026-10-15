@@ -1,70 +1,62 @@
-import { useEffect, useRef, useState } from "react";
-import { compressImage, type CompressedImage } from "../media/image";
-import { CONFIG } from "../domain/config";
-import { useObjectUrl } from "./useObjectUrl";
+import { useEffect, useRef, useState } from 'react'
+import { compressImage, type CompressedImage } from '../media/image'
+import { CONFIG } from '../domain/config'
+import { t } from '../i18n'
+import { useObjectUrl } from './useObjectUrl'
 
 interface Props {
-  title: string;
-  onConfirm: (proof: { blob: Blob; mime: string }) => Promise<void>;
-  onClose: () => void;
+  title: string
+  onConfirm: (proof: { blob: Blob; mime: string }) => Promise<void>
+  onClose: () => void
 }
 
 /** Take a photo, check it, then mark the task done. A task cannot be completed without this step. */
 export function ProofSheet({ title, onConfirm, onClose }: Props) {
-  const dialogRef = useRef<HTMLDialogElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [image, setImage] = useState<CompressedImage>();
-  const [working, setWorking] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const url = useObjectUrl(image?.blob);
+  const dialogRef = useRef<HTMLDialogElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [image, setImage] = useState<CompressedImage>()
+  const [working, setWorking] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const url = useObjectUrl(image?.blob)
 
   useEffect(() => {
-    const dialog = dialogRef.current;
-    if (dialog && !dialog.open) dialog.showModal();
-  }, []);
+    const dialog = dialogRef.current
+    if (dialog && !dialog.open) dialog.showModal()
+  }, [])
 
   async function onPick(file: File | undefined) {
-    if (!file) return;
-    setError(null);
-    setWorking(true);
+    if (!file) return
+    setError(null)
+    setWorking(true)
     try {
-      setImage(await compressImage(file));
+      setImage(await compressImage(file))
     } catch (err) {
-      setImage(undefined);
-      setError(
-        err instanceof Error ? err.message : "Could not read that photo.",
-      );
+      setImage(undefined)
+      setError(err instanceof Error ? err.message : t('Could not read that photo.'))
     } finally {
-      setWorking(false);
-      if (inputRef.current) inputRef.current.value = "";
+      setWorking(false)
+      if (inputRef.current) inputRef.current.value = ''
     }
   }
 
   async function confirm() {
-    if (!image) return;
-    setError(null);
-    setWorking(true);
+    if (!image) return
+    setError(null)
+    setWorking(true)
     try {
-      await onConfirm({ blob: image.blob, mime: image.mime });
-      onClose();
+      await onConfirm({ blob: image.blob, mime: image.mime })
+      onClose()
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Could not save your progress.",
-      );
-      setWorking(false);
+      setError(err instanceof Error ? err.message : t('Could not save your progress.'))
+      setWorking(false)
     }
   }
 
   return (
-    <dialog
-      ref={dialogRef}
-      className="sheet"
-      onClose={onClose}
-      aria-labelledby="proof-title"
-    >
+    <dialog ref={dialogRef} className="sheet" onClose={onClose} aria-labelledby="proof-title">
       <div className="sheet__body">
         <h2 id="proof-title">{title}</h2>
-        <p className="muted">Take a photo as proof that you did it.</p>
+        <p className="muted">{t('Take a photo as proof that you did it.')}</p>
 
         {/* `capture` opens the camera on phones; desktop browsers show a file picker instead. */}
         <input
@@ -78,14 +70,10 @@ export function ProofSheet({ title, onConfirm, onClose }: Props) {
         />
 
         {url ? (
-          <img
-            className="preview"
-            src={url}
-            alt="Preview of your proof photo"
-          />
+          <img className="preview" src={url} alt={t('Preview of your proof photo')} />
         ) : (
           <label htmlFor="proof-input" className="dropzone" aria-busy={working}>
-            {working ? "Preparing photo…" : "Take a photo"}
+            {working ? t('Preparing photo…') : t('Take a photo')}
           </label>
         )}
 
@@ -96,34 +84,20 @@ export function ProofSheet({ title, onConfirm, onClose }: Props) {
         )}
 
         <div className="actions">
-          <button
-            type="button"
-            className="btn"
-            onClick={() => dialogRef.current?.close()}
-            disabled={working}
-          >
-            Cancel
+          <button type="button" className="btn" onClick={() => dialogRef.current?.close()} disabled={working}>
+            {t('Cancel')}
           </button>
           <span className="spacer" />
           {image && (
-            <label
-              htmlFor="proof-input"
-              className="btn"
-              aria-disabled={working}
-            >
-              Retake
+            <label htmlFor="proof-input" className="btn" aria-disabled={working}>
+              {t('Retake')}
             </label>
           )}
-          <button
-            type="button"
-            className="btn btn--primary"
-            onClick={confirm}
-            disabled={!image || working}
-          >
-            Mark done · +{CONFIG.taskXp} XP
+          <button type="button" className="btn btn--primary" onClick={confirm} disabled={!image || working}>
+            {t('Mark done · +{xp} XP', { xp: CONFIG.taskXp })}
           </button>
         </div>
       </div>
     </dialog>
-  );
+  )
 }

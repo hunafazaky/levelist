@@ -1,21 +1,21 @@
-import { useSyncExternalStore } from "react";
+import { useSyncExternalStore } from 'react'
 
 export interface PwaState {
   /** A new version has been downloaded and is waiting for the person to reload. */
-  updateReady: boolean;
+  updateReady: boolean
   /** The app has just been saved for offline use. Shown once. */
-  offlineReady: boolean;
+  offlineReady: boolean
 }
 
-const INITIAL: PwaState = { updateReady: false, offlineReady: false };
+const INITIAL: PwaState = { updateReady: false, offlineReady: false }
 
-let state = INITIAL;
-let apply: (() => void) | undefined;
-const listeners = new Set<() => void>();
+let state = INITIAL
+let apply: (() => void) | undefined
+const listeners = new Set<() => void>()
 
 function set(next: Partial<PwaState>) {
-  state = { ...state, ...next };
-  listeners.forEach((l) => l());
+  state = { ...state, ...next }
+  listeners.forEach((l) => l())
 }
 
 /**
@@ -24,33 +24,33 @@ function set(next: Partial<PwaState>) {
  */
 export const pwa = {
   updateReady(applyUpdate: () => void) {
-    apply = applyUpdate;
-    set({ updateReady: true });
+    apply = applyUpdate
+    set({ updateReady: true })
   },
   offlineReady() {
-    set({ offlineReady: true });
+    set({ offlineReady: true })
   },
   dismissOfflineReady() {
-    set({ offlineReady: false });
+    set({ offlineReady: false })
   },
   applyUpdate() {
-    apply?.();
+    apply?.()
   },
   /** For tests. */
   reset() {
-    apply = undefined;
-    state = INITIAL;
-    listeners.forEach((l) => l());
+    apply = undefined
+    state = INITIAL
+    listeners.forEach((l) => l())
   },
-};
+}
 
 const subscribe = (l: () => void) => {
-  listeners.add(l);
+  listeners.add(l)
   return () => {
-    listeners.delete(l);
-  };
-};
+    listeners.delete(l)
+  }
+}
 
 export function usePwaState(): PwaState {
-  return useSyncExternalStore(subscribe, () => state);
+  return useSyncExternalStore(subscribe, () => state)
 }
