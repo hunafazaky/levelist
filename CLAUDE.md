@@ -212,13 +212,35 @@ Everything in a file is checked before it touches IndexedDB: types, dates, recur
 - [ ] **Later**: reward shop (spend XP), notifications (best effort), monthly recurrence, `dayStartHour` for night owls
 - [x] **M6 — Ready for strangers (part 1)**: first-run onboarding, English + Indonesian text with a language switch, About/Privacy card, accessibility pass (see i18n and onboarding section)
 - [x] **M7 — Ready for strangers (part 2)**: reminders (while the app is open), on-device error log and problem report, tested database upgrades, storage-failure screen, CI, Vercel/Render config with a strict CSP (see Readiness section)
-- [ ] **M8 — Optional accounts and sync**: managed backend (Supabase or Cloudflare), email login, sync of the same ledger/occurrence merge rules, data encrypted on the device before upload (server cannot read it; forgotten password means unrecoverable data), photos in object storage with size limits
+- [ ] **M8 — Optional accounts and sync** (design decided, see section below)
+  - [x] M8a: key layer (`src/sync/keys.ts`, `bytes.ts`) — see notes below
+  - [ ] M8b: sync engine — `SyncTransport` interface, in-memory fake server, pull→merge→push with compare-and-swap, multi-device convergence tests
+  - [ ] M8c: Supabase — SQL schema + row-level security, transport, `VITE_SUPABASE_*` config, CSP `connect-src`, lazy-loaded client
+  - [ ] M8d: UI — email-code sign-in, passphrase, recovery key screen, new-device flow, sync status, delete cloud data
+  - [ ] M8e: verification — tests against the fake server, plus a checklist the owner runs against a real Supabase project (cannot be run from the build environment)
 - [ ] **M9 — Social (only if users ask)**: friends/groups, peer review of proof photos, leaderboards; needs moderation and reporting
 
 ### Defaults assumed for M6+ (owner has not answered yet; change if wrong)
 - Open public signup, free to use, no ads or tracking.
 - Local-first stays the default. Accounts are optional and come after the app is usable without them.
 - Cross-device sync is the main reason for accounts; social is later.
+
+## Sync design (M8) — decisions confirmed by the owner: Supabase, encrypted on device with a recovery key, data only (no photos)
+
+- **Local-first stays.** The app is fully usable without an account. Sync is opt-in. If `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` are unset, the sync UI is hidden entirely (also the self-host story). The Supabase client is loaded with a dynamic `import()` only when someone turns sync on, so the offline app does not get heavier.
+- **What syncs**: one encrypted snapshot per user: tasks, occurrences, task_complete ledger entries, bookmarks. Same content as a photo-less backup. **No photos**; a task finished on another device shows "Photo is on another device" instead of "No photo". Day records and day-level XP are never synced; every device recomputes them (already how merge works).
+- **Why snapshot, not an operation log**: merge is already commutative and idempotent (newer `updatedAt` wins for tasks; done > expired > pending for occurrences; XP entries unioned). So any order of pulls and pushes converges, and there are no tombstones to keep. A snapshot stays small (a year of 5 daily tasks is roughly 100 KB encrypted). If it ever outgrows that, move to per-record rows without changing the merge rules.
+- **Protocol**: server table `snapshots(user_id pk, revision, payload, updated_at)`. A device pulls, merges with `mergeInto`, then pushes with compare-and-swap (`put_snapshot(expected_revision, payload)`); on a revision mismatch it pulls, merges and retries (max 3). Triggers: app open, return to foreground, back online, a few seconds after a local change, and a manual button. A hash of the last synced state (device-local meta) avoids pushing when nothing changed.
+- **Keys** (the server never sees plaintext or any key):
+  - Login: email one-time code (no login password to forget or reuse). Supabase only proves who you are.
+  - A random 256-bit **data key** encrypts the snapshot (AES-256-GCM, random 96-bit IV per upload, user id and revision in the authenticated data).
+  - The data key is stored on the server **wrapped twice**: by a key derived from a **sync passphrase** (PBKDF2-SHA256, 600k iterations, same as backups), and by a **recovery key** (random, shown once at setup as grouped characters, to be saved by the person).
+  - New device: sign in with the email code, enter the passphrase (or the recovery key), unwrap the data key, pull. Forgetting both the passphrase and the recovery key means the cloud copy is unreadable; local data and `.dqbackup` files are unaffected.
+  - The login password is deliberately not used for encryption: the server receives it at login.
+- **Key layer as built (M8a)**: `createVault(passphrase, userId)` returns `{ vault, dataKey, recoveryKey }`; `unlockWithPassphrase` / `unlockWithRecoveryKey` return a non-extractable `CryptoKey`; `changePassphrase` needs the old passphrase or the recovery key and keeps the recovery key valid; `sealSnapshot` / `openSnapshot(dataKey, …, userId, revision)`. The recovery key is 160 random bits as Crockford base32 in 8 groups of 4 (typed input tolerates case, spaces, O/0, I/L/1) and wraps through HKDF (it is already high-entropy, so no slow derivation). The passphrase wraps through PBKDF2 (600k, from `backup/crypto.ts`). Wraps are AES-GCM with the purpose and user id as authenticated data, so a vault cannot be replayed into another account. Errors are `KeyError` with codes `weak-passphrase | wrong-passphrase | bad-recovery-key | wrong-recovery-key | bad-snapshot`; the UI must map them to plain language and the Indonesian dictionary.
+- **To decide in M8d**: keeping this device unlocked by storing the non-extractable `CryptoKey` in IndexedDB (`meta` row `syncKey`, device-local, never exported) so the passphrase is not asked on every open; signing out deletes it. The `meta` table already allows this with no schema change, but it needs a test that the key survives a reload in real Chromium.
+- **Known limits to tell users**: a malicious or broken server could replay an older snapshot (merge only ever moves done/newer forward, so this delays but cannot undo finished tasks); metadata such as snapshot size and update times is visible to the server; no push reminders while the app is closed, because the server cannot see which tasks are pending (a generic daily push is possible later).
+- **Operations notes**: Supabase free projects pause after about a week without activity, and storage/row limits change, so check current limits before launch. Add the Supabase project URL to `connect-src` in both `vercel.json` and `render.yaml` (the hosting test keeps them in sync). Account deletion needs an edge function (service role); until then offer "delete my cloud data".
 
 ## Decisions (confirmed by the owner)
 
